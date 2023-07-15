@@ -6,6 +6,9 @@
  * available at https://raw.githubusercontent.com/FirelyTeam/firely-net-sdk/master/LICENSE
  */
 
+#nullable enable
+
+using Hl7.Fhir.Model;
 using Hl7.Fhir.Utility;
 using System;
 using System.IO;
@@ -15,30 +18,35 @@ using System.Text.RegularExpressions;
 
 namespace Hl7.Fhir.Rest
 {
-    /*
-	 * Brian 16 Dec 2014:
-	 *		Removed the Category in the HTML Header as we don't do this anymore for DSTU2
-	 *		Implement everything using the native .net async patterns
-	 */
     public static class HttpUtil
     {
         #region << HTTP Headers >>
+
         /// <summary>
         /// "Content-Location" found in the HTTP Headers
         /// </summary>
         public const string CONTENTLOCATION = "Content-Location";
+
         /// <summary>
         /// "Location" found in the HTTP Headers
         /// </summary>
         public const string LOCATION = "Location";
+
         /// <summary>
         /// "Last-Modified" found in the HTTP Headers
         /// </summary>
         public const string LASTMODIFIED = "Last-Modified";
+
         /// <summary>
         /// "ETag" found in the HTTP Headers
         /// </summary>
         public const string ETAG = "ETag";
+
+        /// <summary>
+        /// The header used to communicate the Binary security context
+        /// </summary>
+        public const string SECURITYCONTEXT = "X-Security-Context";
+
         #endregion
 
         /// <summary>
@@ -60,10 +68,10 @@ namespace Hl7.Fhir.Rest
         {
             int bufferSize = 4096;
 
-            byte[] byteBuffer = new byte[bufferSize];
-            MemoryStream buffer = new MemoryStream();
+            var byteBuffer = new byte[bufferSize];
+            var buffer = new MemoryStream();
 
-            int readLen = s.Read(byteBuffer, 0, byteBuffer.Length);
+            var readLen = s.Read(byteBuffer, 0, byteBuffer.Length);
 
             while (readLen > 0)
             {
@@ -98,7 +106,7 @@ namespace Hl7.Fhir.Rest
             return location;
         }
 
-        public static Uri MakeRelativeFromBase(Uri location, Uri baseUrl)
+        public static Uri? MakeRelativeFromBase(Uri? location, Uri baseUrl)
         {
             if (location == null) return null;
 
@@ -114,12 +122,8 @@ namespace Hl7.Fhir.Rest
 
             var endp = location.AbsoluteUri;
             var bUrl = baseUrl.AbsoluteUri;
-            if (endp.StartsWith(bUrl))
-            {
-                return new Uri(endp.Substring(bUrl.Length).TrimStart('/'), UriKind.Relative);
-            }
-
-            return location;
+            
+            return endp.StartsWith(bUrl) ? new Uri(endp.Substring(bUrl.Length).TrimStart('/'), UriKind.Relative) : location;
         }
 
         public static bool IsWithin(this Uri me, Uri other)
@@ -137,7 +141,6 @@ namespace Hl7.Fhir.Rest
             var otherSegments = other.OriginalString.TrimEnd('/').ToLower().Split('/');
 
             var otherLength = otherSegments.Length;
-            var meLength = meSegments.Length;
 
             if (meSegments.Length < otherSegments.Length)
                 return false;
@@ -150,22 +153,20 @@ namespace Hl7.Fhir.Rest
             return true;
         }
 
-        public static string DecodeBody(byte[] body, Encoding enc)
+        public static string? DecodeBody(byte[]? body, Encoding enc)
         {
             if (body == null) return null;
-            if (enc == null) enc = Encoding.UTF8;
+            enc ??= Encoding.UTF8;
 
             // [WMR 20160421] Explicit disposal
             // return (new StreamReader(new MemoryStream(body), enc, true)).ReadToEnd();
-            using (var stream = new MemoryStream(body))
-            using (var reader = new StreamReader(stream, enc, true))
-            {
-                return reader.ReadToEnd();
-            }
+            using var stream = new MemoryStream(body);
+            using var reader = new StreamReader(stream, enc, true);
+            
+            return reader.ReadToEnd();
         }
 
-
-        static readonly string RESTURI_PATTERN;
+        private static readonly string RESTURI_PATTERN;
 
         // Static constructor is called at most one time, before any 
         // instance constructor is invoked or member is accessed. 
@@ -190,6 +191,21 @@ namespace Hl7.Fhir.Rest
                 return false; // This is an operation, so not a resource identity
 
             return Regex.IsMatch(uri, RESTURI_PATTERN);
+        }
+
+        public static bool IsBinaryEndpoint(string uri)
+        {
+            if (ResourceIdentity.IsRestResourceIdentity(uri))
+            {
+                var id = new ResourceIdentity(uri);
+
+                if (id.ResourceType != FhirTypeNames.BINARY_NAME) return false;
+
+                if (id.Id != null && Id.IsValidValue(id.Id)) return true;
+                if (id.VersionId != null && Id.IsValidValue(id.VersionId)) return true;
+            }
+
+            return false;
         }
 
         public static bool IsInformational(this HttpStatusCode code)
@@ -233,7 +249,7 @@ namespace Hl7.Fhir.Rest
         Lenient
     }
 
-
+    [Obsolete("Use ReturnPreference and/or set UseAsync instead.")]
     public enum Prefer
     {
         /// <summary>
@@ -264,6 +280,28 @@ namespace Hl7.Fhir.Rest
         RespondAsync
     }
 
+    public enum ReturnPreference
+    {
+        /// <summary>
+        /// Prefer to receive the full resource in the body after completion of the interaction
+        /// </summary>
+        [EnumLiteral("representation")]
+        Representation,
+
+        /// <summary>
+        /// Prefer to not a receive a body after completion of the interaction
+        /// </summary>
+        [EnumLiteral("minimal")]
+        Minimal,
+
+        /// <summary>
+        /// Prefer to receive an OperationOutcome resource containing hints and warnings about the 
+        /// operation rather than the full resource
+        /// </summary>
+        [EnumLiteral("OperationOutcome")]
+        OperationOutcome
+    }
+
     public enum HTTPVerb
     {
         [EnumLiteral("GET", "http://hl7.org/fhir/http-verb"), Description("GET")]
@@ -280,3 +318,5 @@ namespace Hl7.Fhir.Rest
         PATCH,
     }
 }
+
+#nullable restore

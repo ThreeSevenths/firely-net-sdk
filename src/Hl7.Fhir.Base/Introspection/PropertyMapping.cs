@@ -44,11 +44,7 @@ namespace Hl7.Fhir.Introspection
             PropertyTypeMapping = propertyTypeMapping;
             DeclaringClass = declaringClass;
             FiveWs = string.Empty;
-#if NET452
-            ValidationAttributes = new ValidationAttribute[0];
-#else
             ValidationAttributes = Array.Empty<ValidationAttribute>();
-#endif
         }
 
         /// <summary>
@@ -154,13 +150,7 @@ namespace Hl7.Fhir.Introspection
         /// The collection of zero or more <see cref="ValidationAttribute"/> (or subclasses) declared
         /// on this property.
         /// </summary>
-        public ValidationAttribute[] ValidationAttributes { get; private set; } =
-#if NET452
-            new ValidationAttribute[0];
-#else
-            Array.Empty<ValidationAttribute>();
-#endif
-
+        public ValidationAttribute[] ValidationAttributes { get; private set; } = Array.Empty<ValidationAttribute>();
 
         /// <summary>
         /// The original <see cref="PropertyInfo"/> the metadata was obtained from.
@@ -171,6 +161,21 @@ namespace Hl7.Fhir.Introspection
         /// The release of FHIR for which the metadata was extracted from the property.
         /// </summary>
         public readonly FhirRelease Release;
+
+        /// <summary>
+        /// In Cql, this indicates that this property is the default filter in a retrieve statement.
+        /// </summary>
+        public bool IsPrimaryCodePath;
+
+        /// <summary>
+        /// In Cql, this indicates that this property represents the patient's birthdate.
+        /// </summary>
+        public bool IsPatientBirthDate;
+
+        /// <summary>
+        /// For a bound element, this is the name of the binding.
+        /// </summary>
+        public string? BindingName { get; private set; }
 
         /// <summary>
         /// Inspects the given PropertyInfo, extracting metadata from its attributes and creating a new <see cref="PropertyMapping"/>.
@@ -225,6 +230,10 @@ namespace Hl7.Fhir.Introspection
 
             var isPrimitive = isAllowedNativeTypeForDataTypeValue(implementingType);
 
+            var cqlElementAttribute = ClassMapping.GetAttribute<CqlElementAttribute>(prop, release);
+            var isCqlPrimaryCodePath = cqlElementAttribute?.IsPrimaryCodePath == true;
+            var isBirthDate = cqlElementAttribute?.IsBirthDate == true;
+
             result = new PropertyMapping(elementAttr.Name, declaringClass, prop, implementingType, propertyTypeMapping!, fhirTypes, release)
             {
                 InSummary = elementAttr.InSummary,
@@ -237,7 +246,10 @@ namespace Hl7.Fhir.Introspection
                 IsPrimitive = isPrimitive,
                 RepresentsValueElement = isPrimitive && isPrimitiveValueElement(elementAttr, prop),
                 ValidationAttributes = ClassMapping.GetAttributes<ValidationAttribute>(prop, release).ToArray(),
-                FiveWs = elementAttr.FiveWs
+                FiveWs = elementAttr.FiveWs,
+                IsPrimaryCodePath = isCqlPrimaryCodePath,
+                IsPatientBirthDate = isBirthDate,
+                BindingName = ClassMapping.GetAttribute<BindingAttribute>(prop, release)?.Name
             };
 
             return true;
@@ -338,7 +350,7 @@ namespace Hl7.Fhir.Introspection
         {
             var elementTypeMapping = PropertyTypeMapping;
 
-            if (elementTypeMapping!.IsNestedType)
+            if (elementTypeMapping!.IsBackboneType)
             {
                 var info = elementTypeMapping;
                 return new ITypeSerializationInfo[] { info };

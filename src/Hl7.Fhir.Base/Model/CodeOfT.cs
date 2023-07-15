@@ -104,12 +104,8 @@ namespace Hl7.Fhir.Model
                 return baseResults;
             else
             {
-                var result = COVE.INVALID_CODED_VALUE.AsResult(validationContext, ObjectValue, EnumUtility.GetName<T>());
-#if NET452
-                return baseResults.Concat(new[] { result });
-#else
+                var result = COVE.INVALID_CODED_VALUE(validationContext, ObjectValue, EnumUtility.GetName<T>()).AsResult(validationContext);
                 return baseResults.Append(result);
-#endif
             }
         }
     }
